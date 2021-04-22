@@ -1,97 +1,113 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
-from flask_sqlalchemy import SQLAlchemy 
-import os
-import hashlib 
+from flask import *
+import sqlite3
 
 app = Flask(__name__)
-app.secret_key = "Secret Key"
 
-path = os.path.abspath( os.path.dirname(__file__))
-app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:///" + os.path.join(path , 'database.sqlite')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-db = SQLAlchemy(app)
-
-class Crud(db.Model):
-	id = db.Column(db.Integer , primary_key = True)
-	name = db.Column(db.String(100))
-	email = db.Column(db.String(100))
-	coursecode = db.Column(db.String(100))	
-	rollno 	= db.Column(db.Integer)
-	coursename = db.Column(db.String(100))
-	startdate = db.Column(db.String(100))
-	enddate	  = db.Column(db.String(100))
-	datahash  = db.Column(db.String(100))
-	bctransactionno =  db.Column(db.String(150))
-	
-	def __init__(self, name, email, coursecode, rollno , coursename,startdate,enddate,datahash ) :
-		self.name 	= name
-		self.email 	= email
-		self.coursecode = coursecode
-		self.rollno 	= rollno
-		self.coursename = coursename
-		self.startdate	=	startdate
-		self.enddate	=	enddate
-		self.datahash	=	datahash
-		#self.bctransactionno = bctransactionno
-
-
-@app.route('/')
+@app.route("/")
 def index():
-    all_data = Crud.query.all()
-    return render_template("index.html", all_data = all_data)
+	return render_template("index.html");
 
-@app.route('/insert', methods = ['POST'])
-def insert():
-	if request.method == 'POST':
-		name 	= request.form['name']
-		email 	= request.form['email']
-		coursecode 	= request.form['coursecode']
-		coursename 	= request.form['coursename']
-		rollno		= request.form['rollno']
-		startdate	=	request.form["startdate"]
-		enddate		=	request.form["enddate"]
+@app.route("/add")
+def add():
+	return render_template("add.html")
 
-		finalstr 	= 	name.strip()+ email.strip() + coursecode.strip() + coursename.strip()
-		finalstr	=	finalstr + rollno.strip() + startdate.strip() + enddate.strip()
-		datahash	=	 hashlib.md5(finalstr.encode()).hexdigest()  
-		my_data = Crud(name, email, coursecode, rollno , coursename,startdate,enddate,datahash)
-		db.session.add(my_data)
-		db.session.commit()
-
-		dstr 	= 	coursecode.strip() +','+ rollno.strip() +','+ name.strip()+','+  coursename.strip()
-		dstr	=	dstr +',' +email.strip()+',' +  startdate.strip() +','+ enddate.strip()+','+ datahash.strip()
-
-		flash("Data Inserted Successfully :  "+dstr)
-		return redirect(url_for('index'))
-
-@app.route('/update', methods = ['POST'])
+@app.route("/update")
 def update():
-    if request.method == "POST":
-        my_date = Crud.query.get(request.form.get('id'))
-        #my_date.name = request.form['name']
-        #my_date.email = request.form['email']
-        my_date.bctransactionno = request.form['bctransactionno']
+	con = sqlite3.connect("employee.db")
+	con.row_factory = sqlite3.Row
+	cur = con.cursor()
+	cur.execute("select id, name  from students ")
+	rows = cur.fetchall()
+	return render_template("update.html",rows = rows)
 
-        db.session.commit()
-        flash("Transaction ID updated Successfully")
-        return redirect(url_for('index'))
+@app.route("/modifyrecord",methods = ["POST"])
+def update1():
+	id = request.form["id"]
+	con = sqlite3.connect("employee.db")
+	con.row_factory = sqlite3.Row
+	cur = con.cursor()
+	cur.execute("select *  from students where id=?",id  )
+	rows = cur.fetchall()
+	return render_template("update1.html",rows = rows)
 
-@app.route('/viewbc' )
-def viewbc():
-		bctx ="0x2a4959784f7c3a4090c154a83f45c3bd3658295fa7e250c55803088df99c4344"
-		return redirect("https://rinkeby.etherscan.io/tx/"+bctx)
+@app.route("/updaterecord",methods = ["POST","GET"])
+def updateRecord():
+	msg = "msg"
+
+	if request.method == "POST":
+		try:			
+			id    = request.form["id"]
+			name    = request.form["name"]
+			email   = request.form["email"]
+			address = request.form["address"]
+			with sqlite3.connect("employee.db") as con:
+				cur = con.cursor()
+				#check the validity of data being send by user.
+				cur.execute("update students set name=?, email=?, address=? where id=?",(name,email,address,id))
+			
+				con.commit()
+				msg = " Student updated successfully  "
+		except:
+			con.rollback()
+			msg = " can not update the student record"
+		finally:
+			return render_template("index.html",msg = msg)
+			con.close()
+
 	
-		
-@app.route('/delete/<id>/')
-def delete(id):
-    my_data = Crud.query.get(id)
-    db.session.delete(my_data)
-    db.session.commit()
+@app.route("/savedetails",methods = ["POST","GET"])
+def saveDetails():
+	msg = "msg"
+	if request.method == "POST":
+		try:
+			name    = request.form["name"]
+			email   = request.form["email"]
+			address = request.form["address"]
+			with sqlite3.connect("employee.db") as con:
+				cur = con.cursor()
+				#check the validity of data being send by user.
+				cur.execute("INSERT into students (name, email, address) values (?,?,?)",(name,email,address))
+			
+				con.commit()
+				msg = " Student successfully Added "
+		except:
+			con.rollback()
+			msg = " can not add the student to the list"
+		finally:
+			return render_template("index.html",msg = msg)
+			con.close()
 
-    flash("student Data Deleted Successfully")
-    return redirect(url_for('index'))
+@app.route("/view")
+def view():
+	con = sqlite3.connect("employee.db")
+	con.row_factory = sqlite3.Row
+	cur = con.cursor()
+	cur.execute("select * from students ")
+	rows = cur.fetchall()
+	return render_template("view.html",rows = rows)			
 
-if __name__ == "__main__":
-    app.run(debug = True)
+@app.route("/delete")
+def delete():
+	con = sqlite3.connect("employee.db")
+	con.row_factory = sqlite3.Row
+	cur = con.cursor()
+	cur.execute("select id,name from students ")
+	rows = cur.fetchall()
+	return render_template("delete.html",rows = rows)	
 
+@app.route("/deleterecord",methods = ["POST"])
+def deleterecord():
+	id = request.form["id"]
+	with sqlite3.connect("employee.db") as con:
+		try:
+			cur = con.cursor()
+			cur.execute("delete from students where id = ?",id)
+			msg = "record successfully deleted"
+		except:
+			msg = "can't be deleted"
+		finally:
+			return render_template("index.html",msg = msg)
+	
+	
+if  __name__ == "__main__":
+	app.run()
